@@ -12,8 +12,12 @@ class PyObjectId(ObjectId):
     @classmethod
     def validate(cls, v):
         if not ObjectId.is_valid(v):
-            raise ValueError("Invalid objectid")
+            raise ValueError("Invalid ObjectId")
         return ObjectId(v)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, core_schema, handler):
+        return {"type": "string"}
 
 # --- JOB SCHEMA ---
 class JobSchema(BaseModel):
@@ -28,9 +32,11 @@ class JobSchema(BaseModel):
     source: str  # e.g., 'LinkedIn', 'Indeed'
 
     class Config:
-        populate_by_name = True
+        validate_by_name = True  # Updated for v2
         arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
+        json_encoders = {
+            ObjectId: str
+        }
 
 # --- AUTHENTICATION SCHEMAS ---
 class UserSchema(BaseModel):
@@ -54,6 +60,7 @@ class CourseEnum(str, Enum):
 class SignupRequest(BaseModel):
     email: EmailStr
     password: str
+    phone_number: str  # Added for signup
     course: Optional[CourseEnum] = None
 
 class GoogleAuthRequest(BaseModel):
@@ -75,6 +82,24 @@ class StudentSchema(BaseModel):
     is_active: bool = True
 
     class Config:
-        populate_by_name = True
+        validate_by_name = True  # Updated for v2
+        arbitrary_types_allowed = True
+        json_encoders = {ObjectId: str}
+
+# --- NEW USER SCHEMA (for job placement) ---
+class NewUserSchema(BaseModel):
+    id: Optional[PyObjectId] = Field(alias="_id", default=None)
+    email: EmailStr
+    course: Optional[str] = None
+    name: Optional[str] = None
+    password: Optional[str] = None
+    phone_number: Optional[str] = None  # Added for job placement
+    signup_date: Optional[str] = None
+    password_reset_date: Optional[str] = None
+    is_active: bool = True
+    job_placement_status: Optional[str] = "Not Applied"  # New field for job placement
+
+    class Config:
+        validate_by_name = True  # Updated for v2
         arbitrary_types_allowed = True
         json_encoders = {ObjectId: str}

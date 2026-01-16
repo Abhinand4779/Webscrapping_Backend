@@ -14,6 +14,7 @@ database = client.student_job_portal
 # Collections
 job_collection = database.get_collection("scraped_jobs")
 student_collection = database.get_collection("students")
+new_users_collection = database.get_collection("new_users")  # New collection for job placement
 
 # Dependency for getting database
 def get_db():

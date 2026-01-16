@@ -7,6 +7,9 @@ from datetime import datetime
 from database import student_collection, job_collection, close_db
 from models import UserSchema, ForgotPasswordRequest, JobSchema, StudentSchema, SignupRequest, GoogleAuthRequest
 
+# Import auth router from auth.py
+from auth import router as auth_router
+
 # Import utilities
 from utils import (
     hash_password,
@@ -35,6 +38,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Include auth router (replaces duplicate endpoints)
+app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
+
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
@@ -49,112 +55,14 @@ async def read_root():
         "message": "Welcome to Kerala Student Job Portal API",
         "version": "1.0.0",
         "endpoints": {
-            "signup": "/signup (POST)",
-            "login": "/login (POST)",
+            "signup": "/auth/signup (POST)",
+            "login": "/auth/login (POST)",
             "forgot_password": "/forgot-password (POST)",
             "jobs": "/jobs (GET - requires authentication)",
         }
     }
 
-@app.post("/signup", tags=["Authentication"])
-async def signup(payload: SignupRequest):
-    """
-    Signup endpoint - Create account with email and password
-    Student must be pre-registered by admin
-    """
-    student = await student_collection.find_one({"email": payload.email})
-    
-    if not student:
-        raise HTTPException(
-            status_code=403,
-            detail="Email not registered. Only pre-registered students can activate accounts."
-        )
-
-    if student.get("password"):
-        raise HTTPException(
-            status_code=400,
-            detail="Account already activated. Please login."
-        )
-
-    # Hash password and save; also store course if provided
-    hashed_password = hash_password(payload.password)
-    update_fields = {"password": hashed_password, "signup_date": datetime.utcnow()}
-    if payload.course:
-        # store the enum value string in DB
-        update_fields["course"] = payload.course.value
-
-    await student_collection.update_one(
-        {"email": payload.email},
-        {"$set": update_fields}
-    )
-    
-    # Send confirmation email
-    student_name = student.get("name", "Student")
-    email_sent = send_signup_email(payload.email, payload.password, student_name)
-    
-    return {
-        "message": "Account activated successfully",
-        "email": payload.email,
-        "email_status": "Confirmation email sent" if email_sent else "Account activated but email could not be sent"
-    }
-
-@app.post("/login", tags=["Authentication"])
-async def login(user: UserSchema):
-    """
-    Login endpoint - Returns JWT token
-    """
-    student = await student_collection.find_one({"email": user.email})
-    
-    if not student or not student.get("password"):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    if not verify_password(user.password, student["password"]):
-        raise HTTPException(status_code=401, detail="Invalid credentials")
-
-    token = create_token({"sub": student["email"], "role": "student"})
-
-    return {
-        "access_token": token,
-        "token_type": "bearer",
-        "email": student["email"]
-    }
-
-@app.post("/auth/google", tags=["Authentication"])
-async def google_auth(payload: GoogleAuthRequest):
-    """Authenticate or register user using Google ID token"""
-    # Verify Google ID token
-    idinfo = verify_google_token(payload.id_token)
-    email = idinfo.get("email")
-    name = idinfo.get("name") or idinfo.get("email")
-
-    if not email:
-        raise HTTPException(status_code=400, detail="Google token did not contain an email")
-
-    student = await student_collection.find_one({"email": email})
-
-    if not student:
-        # Create student record (allows Google sign-ins even if not pre-registered)
-        new_student = {
-            "email": email,
-            "name": name,
-            "is_active": True,
-            "created_at": datetime.utcnow()
-        }
-        if payload.course:
-            new_student["course"] = payload.course.value
-        await student_collection.insert_one(new_student)
-    else:
-        # update name/course if provided
-        update = {}
-        if name and not student.get("name"):
-            update["name"] = name
-        if payload.course:
-            update["course"] = payload.course.value
-        if update:
-            await student_collection.update_one({"email": email}, {"$set": update})
-
-    token = create_token({"sub": email, "role": "student"})
-    return {"access_token": token, "token_type": "bearer", "email": email}
+# Removed duplicate auth endpoints (signup, login, google_auth) - now handled by auth.py router
 
 @app.post("/forgot-password", tags=["Authentication"])
 async def forgot_password(request: ForgotPasswordRequest):

@@ -12,3 +12,10 @@ __pycache__/
 
 # Logs
 *.log
+
+venv/
+env/
+myfirstproject/Lib/
+myfirstproject/Scripts/
+myfirstproject/Include/
+
