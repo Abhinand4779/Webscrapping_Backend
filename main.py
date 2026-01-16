@@ -1,97 +1,68 @@
-from fastapi import FastAPI, Body, HTTPException, status, Depends
-from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr, Field
-from typing import List, Optional
-from bson import ObjectId
-from passlib.context import CryptContext
-from jose import jwt, JWTError
-from fastapi.security import OAuth2PasswordBearer
-import os
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.middleware.cors import CORSMiddleware
+from typing import List
+from datetime import datetime
 
-app = FastAPI(title="Kerala Student Job Portal")
+# Import database and models
+from database import student_collection, job_collection, close_db
+from models import UserSchema, ForgotPasswordRequest, JobSchema, StudentSchema, SignupRequest, GoogleAuthRequest
 
-# --- CONFIGURATION ---
-MONGO_URI = "mongodb+srv://hudavkd1:hudanawrin@cluster0.6jjjf37.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-SECRET_KEY = "CHANGE_THIS_SECRET_KEY_FOR_PRODUCTION"
-ALGORITHM = "HS256"
+# Import utilities
+from utils import (
+    hash_password,
+    verify_password,
+    create_token,
+    get_current_student,
+    send_signup_email,
+    send_forgot_password_email,
+    generate_temporary_password,
+    verify_google_token,
+)
 
-# --- SECURITY UTILS ---
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+# Initialize FastAPI app
+app = FastAPI(
+    title="Kerala Student Job Portal",
+    description="Job portal for Kerala students",
+    version="1.0.0"
+)
 
-def hash_password(password: str):
-    return pwd_context.hash(password)
+# CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-def verify_password(password: str, hashed: str):
-    return pwd_context.verify(password, hashed)
+# Shutdown event
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_db()
 
-def create_token(data: dict):
-    return jwt.encode(data, SECRET_KEY, algorithm=ALGORITHM)
-
-# --- DATABASE CONNECTION ---
-client = AsyncIOMotorClient(MONGO_URI)
-db = client.student_job_portal
-job_collection = db.get_collection("scraped_jobs")
-student_collection = db.get_collection("students")
-
-# --- MODELS ---
-class PyObjectId(ObjectId):
-    @classmethod
-    def __get_validators__(cls):
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v, handler=None):
-        if not ObjectId.is_valid(v):
-            raise ValueError("Invalid objectid")
-        return ObjectId(v)
-
-    @classmethod
-    def __get_pydantic_json_schema__(cls, core_schema, handler):
-        return {"type": "string"}
-
-class JobModel(BaseModel):
-    id: Optional[PyObjectId] = Field(alias="_id", default=None)
-    title: str
-    company: str
-    location: str
-    link: str
-    
-    class Config:
-        populate_by_name = True
-        arbitrary_types_allowed = True
-        json_encoders = {ObjectId: str}
-
-class UserSchema(BaseModel):
-    email: EmailStr
-    password: str
-
-# --- AUTH HELPERS ---
-async def get_current_student(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        email = payload.get("sub")
-        if email is None:
-            raise HTTPException(status_code=401, detail="Invalid token")
-            
-        student = await student_collection.find_one({"email": email})
-        if not student:
-            raise HTTPException(status_code=403, detail="Access denied")
-            
-        return student
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
-# --- ROUTES ---
+# --- ENDPOINTS ---
 
 @app.get("/", tags=["Root"])
 async def read_root():
-    return {"message": "Welcome to Kerala Student Job Portal API"}
+    """Root endpoint"""
+    return {
+        "message": "Welcome to Kerala Student Job Portal API",
+        "version": "1.0.0",
+        "endpoints": {
+            "signup": "/signup (POST)",
+            "login": "/login (POST)",
+            "forgot_password": "/forgot-password (POST)",
+            "jobs": "/jobs (GET - requires authentication)",
+        }
+    }
 
 @app.post("/signup", tags=["Authentication"])
-async def signup(user: UserSchema):
-    # Check if student exists in database (pre-registered by admin)
-    student = await student_collection.find_one({"email": user.email})
+async def signup(payload: SignupRequest):
+    """
+    Signup endpoint - Create account with email and password
+    Student must be pre-registered by admin
+    """
+    student = await student_collection.find_one({"email": payload.email})
     
     if not student:
         raise HTTPException(
@@ -99,23 +70,39 @@ async def signup(user: UserSchema):
             detail="Email not registered. Only pre-registered students can activate accounts."
         )
 
-    # Check if already activated
     if student.get("password"):
         raise HTTPException(
             status_code=400,
             detail="Account already activated. Please login."
         )
 
-    # Update with hashed password
+    # Hash password and save; also store course if provided
+    hashed_password = hash_password(payload.password)
+    update_fields = {"password": hashed_password, "signup_date": datetime.utcnow()}
+    if payload.course:
+        # store the enum value string in DB
+        update_fields["course"] = payload.course.value
+
     await student_collection.update_one(
-        {"email": user.email},
-        {"$set": {"password": hash_password(user.password)}}
+        {"email": payload.email},
+        {"$set": update_fields}
     )
     
-    return {"message": "Account activated successfully"}
+    # Send confirmation email
+    student_name = student.get("name", "Student")
+    email_sent = send_signup_email(payload.email, payload.password, student_name)
+    
+    return {
+        "message": "Account activated successfully",
+        "email": payload.email,
+        "email_status": "Confirmation email sent" if email_sent else "Account activated but email could not be sent"
+    }
 
 @app.post("/login", tags=["Authentication"])
 async def login(user: UserSchema):
+    """
+    Login endpoint - Returns JWT token
+    """
     student = await student_collection.find_one({"email": user.email})
     
     if not student or not student.get("password"):
@@ -124,21 +111,102 @@ async def login(user: UserSchema):
     if not verify_password(user.password, student["password"]):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
-    token = create_token({
-        "sub": student["email"],
-        "role": "student"
-    })
+    token = create_token({"sub": student["email"], "role": "student"})
 
     return {
         "access_token": token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "email": student["email"]
     }
 
-@app.get("/jobs", response_model=List[JobModel], tags=["Jobs"])
+@app.post("/auth/google", tags=["Authentication"])
+async def google_auth(payload: GoogleAuthRequest):
+    """Authenticate or register user using Google ID token"""
+    # Verify Google ID token
+    idinfo = verify_google_token(payload.id_token)
+    email = idinfo.get("email")
+    name = idinfo.get("name") or idinfo.get("email")
+
+    if not email:
+        raise HTTPException(status_code=400, detail="Google token did not contain an email")
+
+    student = await student_collection.find_one({"email": email})
+
+    if not student:
+        # Create student record (allows Google sign-ins even if not pre-registered)
+        new_student = {
+            "email": email,
+            "name": name,
+            "is_active": True,
+            "created_at": datetime.utcnow()
+        }
+        if payload.course:
+            new_student["course"] = payload.course.value
+        await student_collection.insert_one(new_student)
+    else:
+        # update name/course if provided
+        update = {}
+        if name and not student.get("name"):
+            update["name"] = name
+        if payload.course:
+            update["course"] = payload.course.value
+        if update:
+            await student_collection.update_one({"email": email}, {"$set": update})
+
+    token = create_token({"sub": email, "role": "student"})
+    return {"access_token": token, "token_type": "bearer", "email": email}
+
+@app.post("/forgot-password", tags=["Authentication"])
+async def forgot_password(request: ForgotPasswordRequest):
+    """
+    Forgot password endpoint - Send temporary password via email
+    """
+    student = await student_collection.find_one({"email": request.email})
+    
+    if not student:
+        # Security: Don't reveal if email exists
+        return {"message": "If the email exists, a password reset link will be sent shortly"}
+    
+    # Generate and hash temporary password
+    temporary_password = generate_temporary_password()
+    hashed_password = hash_password(temporary_password)
+    
+    # Update password in database
+    await student_collection.update_one(
+        {"email": request.email},
+        {"$set": {"password": hashed_password, "password_reset_date": datetime.utcnow()}}
+    )
+    
+    # Send email
+    student_name = student.get("name", "Student")
+    email_sent = send_forgot_password_email(request.email, temporary_password, student_name)
+    
+    return {
+        "message": "If the email exists, a password reset link will be sent shortly",
+        "email_status": "Password reset email sent" if email_sent else "Could not send email"
+    }
+
+@app.get("/jobs", response_model=List[JobSchema], tags=["Jobs"])
 async def get_jobs(current_student=Depends(get_current_student)):
-    jobs = await job_collection.find().to_list(100)
+    """
+    Get all jobs - Requires authentication
+    """
+    # Filter jobs by student's course/domain if available
+    student_course = current_student.get("course") if isinstance(current_student, dict) else None
+    if student_course:
+        query = {"$or": [{"category": student_course}, {"source": student_course}]}
+        jobs = await job_collection.find(query).to_list(100)
+    else:
+        jobs = await job_collection.find().to_list(100)
     return jobs
+
+@app.get("/profile", response_model=StudentSchema, tags=["Profile"])
+async def get_profile(current_student=Depends(get_current_student)):
+    """
+    Get current student profile - Requires authentication
+    """
+    return current_student
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)

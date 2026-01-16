@@ -1,8 +1,24 @@
 from motor.motor_asyncio import AsyncIOMotorClient
+import os
 
-# Replace with your actual MongoDB URI
-MONGO_DETAILS = "mongodb://localhost:27017"
+# MongoDB Configuration
+MONGO_URI = os.getenv(
+    "MONGO_URI",
+    "mongodb+srv://hudavkd1:hudanawrin@cluster0.6jjjf37.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+)
 
-client = AsyncIOMotorClient("mongodb+srv://hudavkd1:hudanawrin@cluster0.6jjjf37.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
+# Initialize MongoDB Client
+client = AsyncIOMotorClient(MONGO_URI)
 database = client.student_job_portal
+
+# Collections
 job_collection = database.get_collection("scraped_jobs")
+student_collection = database.get_collection("students")
+
+# Dependency for getting database
+def get_db():
+    return database
+
+async def close_db():
+    """Close database connection"""
+    client.close()
