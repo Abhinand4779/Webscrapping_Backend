@@ -4,10 +4,9 @@ A lightweight Python API built with FastAPI that scrapes job listings from popul
 
 ## 🚀 Features
 
-- **Live Scraping**: Fetches data dynamically from job portals.
-- **No Database**: No setup required, just run and scrape.
-- **Customizable**: Search by keyword and location via API query parameters.
-- **Clean API**: Returns structured JSON data.
+- **Multi-Platform Scraping**: Fetches real-world data from **Naukri, LinkedIn, Indeed, Glassdoor**, and **Internshala**.
+- **No Database**: Completely independent, no setup required.
+- **Selenium Powered**: Uses headless browser technology to bypass modern bot protections.
 
 ## 🛠️ Tech Stack
 
