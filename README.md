@@ -1,33 +1,39 @@
-**🕸️ Web Scraping Project (Python)**
+# 🕸️ Real-Time Job Scraper
 
-This project demonstrates how web scraping can be used to collect real-world job data automatically from online job portals using Python.
+A lightweight Python API built with FastAPI that scrapes job listings from popular portals in real-time. No database or authentication required.
 
-The goal of this project is to explore how data can be extracted, processed, and structured efficiently to reduce manual effort in searching and analyzing job listings.
+## 🚀 Features
 
-**🚀 Features**
+- **Live Scraping**: Fetches data dynamically from job portals.
+- **No Database**: No setup required, just run and scrape.
+- **Customizable**: Search by keyword and location via API query parameters.
+- **Clean API**: Returns structured JSON data.
 
-Scrapes job-related information such as title, company, location, and links
+## 🛠️ Tech Stack
 
-Handles pagination and dynamic content where applicable
+- **Python 3.x**
+- **FastAPI** (Web Framework)
+- **BeautifulSoup4** (HTML Parsing)
+- **Requests** (HTTP Client)
 
-Clean and structured data extraction
+## 📌 Getting Started
 
-Easy to extend for other platforms or data sources
+1. **Install dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-**🛠️ Tech Stack**
+2. **Run the server**:
+   ```bash
+   python main.py
+   ```
 
-Python
+3. **Scrape Jobs**:
+   - Open your browser to: `http://localhost:8000/jobs?query=python&location=kerala`
+   - View the interactive docs: `http://localhost:8000/docs`
 
-Requests
+## 📂 Project Structure
 
-BeautifulSoup / Selenium (based on scraping needs)
-
-**📌 Use Case**
-
-This project is useful for:
-
-Automating job searches
-
-Data analysis and insights
-
-Learning real-world web scraping techniques
+- `main.py`: FastAPI routes and application logic.
+- `scraper.py`: Core scraping logic using BeautifulSoup.
+- `requirements.txt`: Python package dependencies.

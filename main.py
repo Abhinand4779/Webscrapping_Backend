@@ -1,32 +1,25 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
-from typing import List
-from datetime import datetime
+from typing import List, Optional
+from pydantic import BaseModel
+from scraper import JobScraper
 
-# Import database and models
-from database import student_collection, job_collection, close_db
-from models import UserSchema, ForgotPasswordRequest, JobSchema, StudentSchema, SignupRequest, GoogleAuthRequest
-
-# Import auth router from auth.py
-from auth import router as auth_router
-
-# Import utilities
-from utils import (
-    hash_password,
-    verify_password,
-    create_token,
-    get_current_student,
-    send_signup_email,
-    send_forgot_password_email,
-    generate_temporary_password,
-    verify_google_token,
-)
+# --- MODELS ---
+class JobSchema(BaseModel):
+    title: str
+    company: str
+    location: str
+    category: Optional[str] = None
+    salary: Optional[str] = "Not Disclosed"
+    description: Optional[str] = ""
+    link: str
+    source: str
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="Kerala Student Job Portal",
-    description="Job portal for Kerala students",
-    version="1.0.0"
+    title="Real-Time Job Scraper",
+    description="API for scraping jobs from various portals without Auth/DB",
+    version="2.0.0"
 )
 
 # CORS Middleware
@@ -38,13 +31,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include auth router (replaces duplicate endpoints)
-app.include_router(auth_router, prefix="/auth", tags=["Authentication"])
-
-# Shutdown event
-@app.on_event("shutdown")
-async def shutdown_event():
-    await close_db()
+# Initialize Scraper
+scraper = JobScraper()
 
 # --- ENDPOINTS ---
 
@@ -52,69 +40,26 @@ async def shutdown_event():
 async def read_root():
     """Root endpoint"""
     return {
-        "message": "Welcome to Kerala Student Job Portal API",
-        "version": "1.0.0",
-        "endpoints": {
-            "signup": "/auth/signup (POST)",
-            "login": "/auth/login (POST)",
-            "forgot_password": "/forgot-password (POST)",
-            "jobs": "/jobs (GET - requires authentication)",
-        }
-    }
-
-# Removed duplicate auth endpoints (signup, login, google_auth) - now handled by auth.py router
-
-@app.post("/forgot-password", tags=["Authentication"])
-async def forgot_password(request: ForgotPasswordRequest):
-    """
-    Forgot password endpoint - Send temporary password via email
-    """
-    student = await student_collection.find_one({"email": request.email})
-    
-    if not student:
-        # Security: Don't reveal if email exists
-        return {"message": "If the email exists, a password reset link will be sent shortly"}
-    
-    # Generate and hash temporary password
-    temporary_password = generate_temporary_password()
-    hashed_password = hash_password(temporary_password)
-    
-    # Update password in database
-    await student_collection.update_one(
-        {"email": request.email},
-        {"$set": {"password": hashed_password, "password_reset_date": datetime.utcnow()}}
-    )
-    
-    # Send email
-    student_name = student.get("name", "Student")
-    email_sent = send_forgot_password_email(request.email, temporary_password, student_name)
-    
-    return {
-        "message": "If the email exists, a password reset link will be sent shortly",
-        "email_status": "Password reset email sent" if email_sent else "Could not send email"
+        "message": "Welcome to the Real-Time Job Scraper API",
+        "version": "2.0.0",
+        "status": "Running (No Auth/DB Required)",
+        "usage": "Go to /jobs?query=python&location=kerala to scrape jobs"
     }
 
 @app.get("/jobs", response_model=List[JobSchema], tags=["Jobs"])
-async def get_jobs(current_student=Depends(get_current_student)):
+async def get_jobs(
+    query: str = Query("Python", description="Job title or keywords"),
+    location: str = Query("Kerala", description="Location to search in")
+):
     """
-    Get all jobs - Requires authentication
+    Fetch jobs in real-time using the scraper (No DB/Auth)
     """
-    # Filter jobs by student's course/domain if available
-    student_course = current_student.get("course") if isinstance(current_student, dict) else None
-    if student_course:
-        query = {"$or": [{"category": student_course}, {"source": student_course}]}
-        jobs = await job_collection.find(query).to_list(100)
-    else:
-        jobs = await job_collection.find().to_list(100)
-    return jobs
-
-@app.get("/profile", response_model=StudentSchema, tags=["Profile"])
-async def get_profile(current_student=Depends(get_current_student)):
-    """
-    Get current student profile - Requires authentication
-    """
-    return current_student
+    try:
+        jobs = scraper.get_all_jobs(query=query, location=location)
+        return jobs
+    except Exception as e:
+        return {"error": f"Scraping failed: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
