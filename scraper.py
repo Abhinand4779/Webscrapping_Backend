@@ -1,5 +1,6 @@
 import time
 import random
+import os
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
@@ -16,7 +17,13 @@ class JobScraper:
         self.chrome_options.add_argument("--no-sandbox")
         self.chrome_options.add_argument("--disable-dev-shm-usage")
         self.chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        self.chrome_options.add_argument("--disable-gpu")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+
+        # Automatically use Chrome installed in Render's environment if it exists
+        render_chrome_path = "/opt/render/project/.render/chrome/opt/google/chrome/google-chrome"
+        if os.path.exists(render_chrome_path):
+            self.chrome_options.binary_location = render_chrome_path
 
     def get_driver(self):
         try:
