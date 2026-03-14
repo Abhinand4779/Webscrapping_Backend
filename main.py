@@ -46,7 +46,7 @@ async def read_root():
         "usage": "Go to /jobs?query=python&location=kerala to scrape jobs"
     }
 
-@app.get("/jobs", response_model=List[JobSchema], tags=["Jobs"])
+@app.get("/jobs", tags=["Jobs"])
 async def get_jobs(
     query: str = Query("Python", description="Job title or keywords"),
     location: str = Query("Kerala", description="Location to search in")
@@ -59,6 +59,29 @@ async def get_jobs(
         return jobs
     except Exception as e:
         return {"error": f"Scraping failed: {str(e)}"}
+
+@app.get("/debug", tags=["Debug"])
+async def debug_env():
+    """Check if Chrome is installed and driver works"""
+    import os
+    info = {
+        "is_render": "RENDER" in os.environ,
+        "render_chrome_exists": os.path.exists("/opt/render/project/.render/chrome/opt/google/chrome/google-chrome"),
+        "docker_chrome_exists": os.path.exists("/usr/bin/google-chrome-stable") or os.path.exists("/usr/bin/google-chrome")
+    }
+    
+    # Try to initialize driver
+    try:
+        driver = scraper.get_driver()
+        if driver:
+            info["driver_status"] = "Success! Chrome launched."
+            driver.quit()
+        else:
+            info["driver_status"] = "Failed (get_driver returned None)"
+    except Exception as e:
+        info["driver_status"] = f"Failed with exception: {str(e)}"
+        
+    return info
 
 if __name__ == "__main__":
     import uvicorn

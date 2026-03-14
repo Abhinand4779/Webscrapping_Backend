@@ -29,9 +29,12 @@ class JobScraper:
         try:
             service = Service(ChromeDriverManager().install())
             driver = webdriver.Chrome(service=service, options=self.chrome_options)
+            self.last_driver_error = None
             return driver
         except Exception as e:
-            print(f"Error initializing Chrome driver: {e}")
+            import traceback
+            self.last_driver_error = traceback.format_exc()
+            print(f"Error initializing Chrome driver:\n{self.last_driver_error}")
             return None
 
     def scrape_naukri(self, query, location):
@@ -192,6 +195,7 @@ class JobScraper:
 
     def get_all_jobs(self, query="Python", location="Kerala"):
         all_results = []
+        debug_info = []
         print(f"Scraping results for '{query}' in '{location}'...")
         
         # Call each platform
@@ -203,15 +207,27 @@ class JobScraper:
             ("Glassdoor", self.scrape_glassdoor)
         ]
         
+        # Test driver first
+        test_driver = self.get_driver()
+        if not test_driver:
+            return [{"error": "CHROME_CRASH", "details": self.last_driver_error or "Driver initialized as None"}]
+        test_driver.quit()
+        
         for name, scrape_func in platforms:
             try:
                 print(f"Searching {name}...")
                 results = scrape_func(query, location)
+                if not results:
+                    debug_info.append(f"{name} returned 0 jobs. (Possible Anti-Bot Block)")
                 all_results.extend(results)
                 print(f"Found {len(results)} jobs on {name}")
             except Exception as e:
+                debug_info.append(f"Error in {name} scraper: {e}")
                 print(f"Error in {name} scraper: {e}")
                 
+        if not all_results:
+            return [{"error": "NO_JOBS_FOUND", "details": debug_info}]
+            
         return all_results
 
 if __name__ == "__main__":
