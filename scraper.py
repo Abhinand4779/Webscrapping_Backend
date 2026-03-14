@@ -20,7 +20,9 @@ class JobScraper:
         self.chrome_options.add_argument("--disable-gpu")
         self.chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
-        # Automatically use Chrome installed in Render's environment if it exists
+        # Default linux fallback
+        self.chrome_options.binary_location = "/usr/bin/google-chrome"
+        
         render_chrome_path = "/opt/render/project/.render/chrome_v2/chrome-linux64/chrome"
         if os.path.exists(render_chrome_path):
             self.chrome_options.binary_location = render_chrome_path
