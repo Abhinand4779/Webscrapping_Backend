@@ -4,7 +4,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from scraper import JobScraper
 
-# --- MODELS ---
+
 class JobSchema(BaseModel):
     title: str
     company: str
@@ -15,14 +15,13 @@ class JobSchema(BaseModel):
     link: str
     source: str
 
-# Initialize FastAPI app
+
 app = FastAPI(
     title="Real-Time Job Scraper",
     description="API for scraping jobs from various portals without Auth/DB",
     version="2.0.0"
 )
 
-# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -31,10 +30,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Scraper
+
 scraper = JobScraper()
 
-# --- ENDPOINTS ---
+
 
 @app.get("/", tags=["Root"])
 async def read_root():
@@ -70,7 +69,7 @@ async def debug_env():
         "docker_chrome_exists": os.path.exists("/usr/bin/google-chrome-stable") or os.path.exists("/usr/bin/google-chrome")
     }
     
-    # Try to initialize driver
+    
     try:
         driver = scraper.get_driver()
         if driver:
